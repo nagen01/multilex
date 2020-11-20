@@ -1,0 +1,566 @@
+# This transform is called with all objects downloaded to input_dir
+# Note that dir hierarchy in source is preserved inside input_dirbal
+from infinstor import list_dir_recursively
+def infin_transform_all_objects(input_dir,output_dir, **kwargs):
+    print('input_dir=' + input_dir + ', output_dir=' + output_dir)
+    lof = []
+    global path
+    path=[]
+    list_dir_recursively(input_dir, lof)
+    for file in lof:
+        print(">>>>>>>>>> " + str(file))
+        path.append(file)
+    x=path[0].split("/")
+    #global final_path
+    final_path="/"+x[1]+"/"+x[2]+"/"+x[3]+"/"
+    print(final_path)
+    # %%
+#     !pip install transformers
+#     !pip install newspaper3k
+#     !pip install newsapi-python
+#     !pip install langid
+#     !pip install boto3
+    import boto3
+    from boto3.s3.transfer import S3Transfer
+    credentials = { 
+        'aws_access_key_id': 'AKIAY5JHSVAWKBJJ2DFO',
+        'aws_secret_access_key': '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'
+    }
+
+    client = boto3.client('s3', **credentials)
+    #transfer = S3Transfer(client)
+
+    #transfer.upload_file('/tmp/myfile', bucket, key,
+                         #extra_args={'ACL': 'public-read'})
+
+    file_url = '%s/%s/%s' % (client.meta.endpoint_url, 'multilex-1', 'data_folders')
+    file_url1 = '%s/%s/%s' % (client.meta.endpoint_url, 'multilex-1', 'data_folders/english_country.csv')
+    print(file_url)
+    print(type(file_url))
+    print(file_url1)
+
+    # %%
+   
+
+    # %%
+    import requests
+    import re
+    import string
+    import base64
+    import json
+    import time
+    import os
+
+    import pandas as pd
+    import numpy as np
+    from datetime import datetime, date
+    from datetime import timedelta 
+    from bs4 import BeautifulSoup
+    from newspaper import Article 
+    from newsapi import NewsApiClient
+    import nltk
+    nltk.download('punkt')
+    import langid
+    from transformers import pipeline
+    nlpq = pipeline("question-answering")
+
+
+    # %%
+    # result = nlp(question="which company is going to be listed in stock exchange?", context=context)
+    # print(f"Answer: '{result['answer']}', score: {round(result['score'], 4)}, start: {result['start']}, end: {result['end']}")
+
+    # %%
+    def get_cur_dat():    
+        cur_dat = datetime.now()
+        cur_date = str(date.today())
+        #cur_hour = cur_dat.hour
+
+        return cur_dat, cur_date
+
+    # %%
+    def get_path(cur_dat, cur_date):
+
+        cur_hour = cur_dat.hour
+        parent_dir = final_path
+        directory = cur_date
+        path = parent_dir+cur_date+"/"
+        try:
+            os.mkdir(path)
+            parent_dir = path
+        except OSError as error:  
+            #print("Folder already exists")
+            parent_dir = path
+
+        parent_dir = path
+
+        if cur_hour < 16 :
+            s_dir = directory + "_10AM/"
+        else:
+            s_dir = directory + "_4PM/"
+
+        path = path + s_dir
+        try:  
+            os.mkdir(path)
+        except OSError as error:
+            pass
+            #print("Folder already exists")
+
+        return path, parent_dir
+
+    # %%
+    def titleCheck(title):
+        revCheck = False
+        for kwt in titleKeywords:       
+            if kwt in title:
+                revCheck = True
+        if not revCheck:
+            print(title + "IS NOT RELEVANT")
+            return False
+        return True
+
+    # %%
+    cur_dat, cur_date = get_cur_dat()
+    path, parent_dir = get_path(cur_dat, cur_date)
+
+    field = 'link'
+    #query = "pre+ipo+"
+    #country = "India"
+    titleKeywords = ['IPO','going public','listed','listing']
+    field_name = 'link'
+    new_data_folders_path = final_path
+    art_filename = path + "art_info.csv"
+    questions = {"Company_names" : ["which company is going to be listed?","which company is going to be IPO?","which company is going to be public?","which company is going to be listed on stock exchange?","which company is about to launch initial public offering?","which company is about to launch IPO?","which company is it talking about?"]}
+
+    # %%
+    def get_article_from_newspaper(url):
+        try:
+            article=  Article(url)
+            article.download()
+            article.parse()
+            article.nlp()
+            title = article.title
+            text = article.text
+            summary = article.summary
+        except:
+            title,text,summary = 'NA','NA','NA'
+        return  title , text , summary
+
+    # %%
+    def google_rss_search(query,country,cur_dat):
+        num=1
+        query = query + country
+        text = []
+        summary = []
+        titles = []
+        links = []
+        company_names = []
+        p_dates = []
+        s_dates = []
+        compString = ""
+
+        res = requests.get("https://news.google.com/rss/search?q=%7B"+ query +"%7D&hl=en-IN&gl=IN&ceid=IN:en")
+        soup = BeautifulSoup(res.content,features='xml')
+        items = soup.findAll('item')
+        for item in items:
+            if(num > 5):
+                break
+            if item.title.text in titles:
+                continue
+            # revCheck = False
+            # for kwt in titleKeywords:        
+            #     if kwt in item.title.text:
+            #         revCheck = True
+            # if not revCheck:
+            #     print(item.title.text + "IS NOT RELEVANT")
+            #     continue
+            if not titleCheck(item.title.text):
+                continue
+            try:
+                # toi_article = Article(item.link.text, language="en") # en for English 
+
+                # toi_article.download() 
+
+                # toi_article.parse() 
+
+                # toi_article.nlp() 
+
+                print(item.title.text + '\n')  
+                [ntitle,ntext,nsummary] = get_article_from_newspaper(item.link.text)
+                links.append(item.link.text)
+                titles.append(ntitle)
+                text.append(ntext)
+                summary.append(nsummary)
+                # context = ntext + 
+                # if len(context) < 5:
+                #     context = ntitle
+                # qAndA = {}
+                # for qn in questions['Company_names']: 
+                #     #print(qn)
+                #     result = nlpq(question=qn, context=context)
+                #     #print(f"Answer: '{result['answer']}', score: {round(result['score'], 4)}, start: {result['start']}, end: {result['end']}")
+                #     if result['answer'] == "":
+                #         continue
+                #     if result['answer'] in qAndA.keys():
+                #         qAndA[result['answer']] = qAndA[result['answer']] + 1
+                #     else:
+                #         qAndA[result['answer']] = 1
+
+                # maxKey = max(qAndA,key=qAndA.get)
+                # print("Max key is : " + maxKey + " Value is : " + str(qAndA[maxKey]))
+
+                # list_keys = []
+                # if qAndA[maxKey] >= 5:
+                #     list_keys.append(maxKey)
+                # elif qAndA[maxKey] >= 3:
+                #     for key in list(qAndA.keys()):
+                #         if(qAndA[key] >=3):
+                #             list_keys.append(key)
+                # else:
+                #     list_keys = list(qAndA.keys())
+
+                # compString = ','.join(list_keys)
+                company_names.append(compString)
+                # print(compString)
+                # qAndA.clear()
+                p_dates.append(item.pubDate.text)
+                s_dates.append(cur_dat.date())
+
+            except:
+                print("Couldn't fetch article from"+ item.title.text)
+
+            time.sleep(2)
+            num = num + 1
+
+        data_dict = {}
+        data_dict['title'] = titles
+        data_dict['link'] = links
+        data_dict['text'] = text
+        data_dict['summary'] = summary
+        data_dict['companies'] = company_names
+        data_dict['publish_date'] = p_dates
+        data_dict['scraped_date'] = s_dates
+
+
+        article_df = pd.DataFrame(data=data_dict)
+        art_filename = path + "art_info.csv"
+        article_df.to_csv(art_filename,index=False)
+        lis1=art_filename.split("/")
+        return article_df
+
+    # %%
+    def google_news_api_search(query,country,cur_date):
+        headers = {
+        'x-rapidapi-host': "google-news.p.rapidapi.com",
+        'x-rapidapi-key': "1cef8d3437msh9b6d7cf365224bfp151445jsnbb49700e852c"
+        }
+        url = "https://google-news.p.rapidapi.com/v1/search"
+
+        qString = {"when":"24h","lang":"en","q":str(query)+" "+str(country)}
+        response = requests.request("GET", url, headers=headers, params=qString)
+        to_python = json.loads(response.text)
+        feed = to_python['feed']
+        articles = to_python['articles'] 
+        date = str(cur_date)
+        comp =[]
+        sd=[]
+        pub_dates=[]
+        links =[]
+        titles =[]
+        texts=[]
+        link =[]
+        summs =[]
+        compString = ""
+
+        for article in articles:
+            # revCheck = False
+            # for kwt in titleKeywords:        
+            #     if kwt in article['title']:
+            #         revCheck = True
+            # if not revCheck:
+            #     print(article['title'] + "IS NOT RELEVANT")
+            #     continue
+
+            if not titleCheck(article['title']):
+                continue
+
+            print(article['title'] + '\n')
+            # comp.append([])
+            sd.append(date)
+            pub_dates.append(article['published'])
+            links.append(article['link'])
+            titles.append(article['title'])
+            [title,text,summary] = get_article_from_newspaper(str(article['link']))
+            texts.append(text)
+            summs.append(summary)
+            # context = text
+            # if len(context) < 5:
+            #       context = article['title']
+            # qAndA = {}
+            # for qn in questions['Company_names']: 
+            #     #print(qn)
+            #     result = nlpq(question=qn, context=context)
+            #     #print(f"Answer: '{result['answer']}', score: {round(result['score'], 4)}, start: {result['start']}, end: {result['end']}")
+            #     if result['answer'] == "":
+            #         continue
+            #     if result['answer'] in qAndA.keys():
+            #         qAndA[result['answer']] = qAndA[result['answer']] + 1
+            #     else:
+            #         qAndA[result['answer']] = 1
+
+            # maxKey = max(qAndA,key=qAndA.get)
+            # print("Max key is : " + maxKey + " Value is : " + str(qAndA[maxKey]))
+
+            # list_keys = []
+            # if qAndA[maxKey] >= 5:
+            #     list_keys.append(maxKey)
+            # elif qAndA[maxKey] >= 3:
+            #     for key in list(qAndA.keys()):
+            #         if(qAndA[key] >=3):
+            #             list_keys.append(key)
+            # else:
+            #     list_keys = list(qAndA.keys())
+
+            # compString = ','.join(list_keys)
+            comp.append(compString)
+            # print(compString)
+            # qAndA.clear()
+
+        article_df = pd.DataFrame({
+           'publish_date':pub_dates,
+            'scraped_date':sd,
+            'title':titles,
+            'link':links,
+            'text':texts,
+            'summary':summs,
+            'companies':comp 
+        })
+        return article_df
+
+    # %%
+    def get_articles_from_newsAPI(query,country,cur_date):
+        newsapi = NewsApiClient(api_key='5656a51123234db3a9b6f30fa0f61230')
+        comp =[]
+        sd=[]
+        pub_dates=[]
+        links =[]
+        titles =[]
+        texts=[]
+        summs =[]
+        compString = ""
+        today = date.today()
+        yesterday = today - timedelta(days = 1)
+        all_articles = newsapi.get_everything(q=query +" " + country,
+                                              from_param=today,
+                                              to=yesterday,
+                                              language='en',
+                                              sort_by='relevancy')
+    #     print(all_articles['articles'])
+        for article in all_articles['articles']:
+            # revCheck = False
+            # for kwt in titleKeywords:        
+            #     if kwt in article['title']:
+            #         revCheck = True
+            # if not revCheck:
+            #     print(article['title'] + "IS NOT RELEVANT")
+            #     continue
+            if not titleCheck(article['title']):
+                continue
+
+            print(article['title'])
+            titles.append(article['title'])
+            sd.append(today)
+            pub_dates.append(article['publishedAt'])
+            links.append(article['url'])
+            [title,text,summary] = get_article_from_newspaper(str(article['url']))
+            texts.append(text)
+            summs.append(summary)
+            # context = text
+            # if len(context) < 5:
+            #       context = article['title']
+            # qAndA = {}
+            # for qn in questions['Company_names']: 
+            #     #print(qn)
+            #     result = nlpq(question=qn, context=context)
+            #     #print(f"Answer: '{result['answer']}', score: {round(result['score'], 4)}, start: {result['start']}, end: {result['end']}")
+            #     if result['answer'] == "":
+            #         continue
+            #     if result['answer'] in qAndA.keys():
+            #         qAndA[result['answer']] = qAndA[result['answer']] + 1
+            #     else:
+            #         qAndA[result['answer']] = 1
+
+            # maxKey = max(qAndA,key=qAndA.get)
+            # print("Max key is : " + maxKey + " Value is : " + str(qAndA[maxKey]))
+
+            # list_keys = []
+            # if qAndA[maxKey] >= 5:
+            #     list_keys.append(maxKey)
+            # elif qAndA[maxKey] >= 3:
+            #     for key in list(qAndA.keys()):
+            #         if(qAndA[key] >=3):
+            #             list_keys.append(key)
+            # else:
+            #     list_keys = list(qAndA.keys())
+
+            # compString = ','.join(list_keys)
+            comp.append(compString)
+            # print(compString)
+            # qAndA.clear()
+
+        article_df = pd.DataFrame({
+           'publish_date':pub_dates,
+            'scraped_date':sd,
+            'title':titles,
+            'link':links,
+            'text':texts,
+            'summary':summs,
+            'companies':comp 
+        })
+        return article_df
+
+    # %%
+    def increment_rows(updated_df, field_name): #This function filters the rows which are already scraped previously.
+        mas_df = pd.read_csv(new_data_folders_path + "master_file.csv",engine='python')
+        # mas_df = mas_df.drop_duplicates(subset=['link'])
+        # mas_df = mas_df.drop_duplicates(subset=['title'])
+        # mas_df = mas_df.drop_duplicates(subset=['text'])
+        # mas_df.index = (range(len(mas_df)))
+        urls = mas_df[field_name].to_list()
+
+        for link in updated_df[field_name]:
+            if link in urls:
+                updated_df = updated_df[updated_df[field_name] != link]
+            else:
+                print("appending")
+                mas_df = mas_df.append(updated_df[updated_df[field_name] == link],ignore_index = True)
+                urls.append(link)
+        mas_df = mas_df.drop_duplicates(subset=['link'])
+        mas_df = mas_df.drop_duplicates(subset=['title'])
+        mas_df = mas_df.drop_duplicates(subset=['text'])
+        mas_df.index = (range(len(mas_df)))
+        mas_df.to_csv(new_data_folders_path + "master_file.csv",index=False)
+        updated_df.index = (range(len(updated_df)))
+        return updated_df, mas_df
+
+    # %%
+    def get_data_for_all_countries(cur_dat):
+        query = 'pre ipo '
+        country_data_dict = {}
+        list_dfs = []
+        countries = get_country_list()
+        for country in countries:
+            print(country)
+            df1 = google_rss_search(query, country, cur_dat)
+            # df1.to_csv(path+"grss_"+country+"_art_data.csv", index=False)
+            # df2 = google_news_api_search(query,country,cur_date)
+            # df2.to_csv(path+"gnews_"+country+"_art_data.csv", index=False)
+            # df3 = get_articles_from_newsAPI(query,country,cur_date)
+            # df3.to_csv(path+"newsapi_"+country+"_art_data.csv", index=False)
+            df = df1
+            # df = df.append(df2)
+            # df = df.append(df3)
+            df = df.drop_duplicates(subset=['link'])
+            df = df.drop_duplicates(subset=['title'])
+            df.index = (range(len(df)))
+            df = df.reindex(columns=['publish_date','scraped_date','companies','title','link','text','summary']) 
+            df = df.drop(['summary'], axis = 1)
+            inc_df, mas_df = increment_rows(df,field_name)
+            inc_df.index = (range(len(inc_df)))
+            # mas_df.index = (range(len(mas_df)))
+            all_art_filename = path + country + "_all_art_data.csv"
+            print(all_art_filename)
+            inc_df.to_csv(all_art_filename, index=False)
+            print('article info file saved as : ' + all_art_filename)
+            country_data_dict[country] = inc_df
+            transfer = S3Transfer(client)
+            lis=all_art_filename.split("/")
+            transfer.upload_file(all_art_filename, 'multilex-1','data_folders/'+all_art_filename,
+                         extra_args={'ACL': 'public-read'})  
+
+            time.sleep(5)
+
+        return country_data_dict
+
+    # %%
+    def predictAttributes(context):
+        # context = ntext
+        # if len(context) < 5:
+        #     context = ntitle
+        qAndA = {}
+        for qn in questions['Company_names']: 
+            #print(qn)
+            result = nlpq(question=qn, context=context)
+            #print(f"Answer: '{result['answer']}', score: {round(result['score'], 4)}, start: {result['start']}, end: {result['end']}")
+            if result['answer'] == "":
+                continue
+            if result['answer'] in qAndA.keys():
+                qAndA[result['answer']] = qAndA[result['answer']] + 1
+            else:
+                qAndA[result['answer']] = 1
+
+        maxKey = max(qAndA,key=qAndA.get)
+        print("Max key is : " + maxKey + " Value is : " + str(qAndA[maxKey]))
+
+        list_keys = []
+        if qAndA[maxKey] >= 5:
+            list_keys.append(maxKey)
+        elif qAndA[maxKey] >= 3:
+            for key in list(qAndA.keys()):
+                if(qAndA[key] >=3):
+                    list_keys.append(key)
+        else:
+            list_keys = list(qAndA.keys())
+
+        compString = ','.join(list_keys)
+        print(compString)
+        qAndA.clear()
+        return compString
+
+    # %%
+    def extractInfo(data_df):
+        for i in range(len(data_df)):
+            context = data_df['title'][i] + os.linesep + data_df['text'][i]
+            compString = predictAttributes(context)
+            data_df['companies'][i] = compString
+            # data_df['companies'][i] = "OLO"
+            # print(data_df['title'][i])
+
+        return data_df
+
+    # %%
+    def get_country_list():
+        countries = pd.read_csv(final_path+"/english_country.csv",encoding='utf-8')
+        countries = countries['Country']
+        return countries
+
+    # %%
+    print("------------------WELCOME TO THE PORTAL-----------------------")
+    print("\n")
+    print("Press 1 for data extraction\t2 for Exit")
+    while(True):
+        ch = input("Enter your choice")
+        cur_dat, cur_date = get_cur_dat()
+        path, parent_dir = get_path(cur_dat, cur_date)
+
+        if ch == '1':
+            country_data_dict = get_data_for_all_countries(cur_dat)
+            for cdd in country_data_dict:
+                country_art_filename = path + cdd + "_all_art_info.csv"
+                new_cdd = extractInfo(country_data_dict[cdd])
+                new_cdd.to_csv(country_art_filename, index=False)
+                transfer = S3Transfer(client)
+
+                transfer.upload_file(country_art_filename, 'multilex-1','data_folders/'+country_art_filename,
+                         extra_args={'ACL': 'public-read'})
+                #print(country_data_dict[cdd]) 
+
+        else:
+            break
+
+    # %%
+
+"""
+""" 
+
+
+
